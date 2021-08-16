@@ -1,4 +1,5 @@
 [core]
-    remote = myremote
-['remote "myremote"']
-    url = gdrive://0B7pQmm-OfDv7ZUhHZm9ZWEZidDg
+    remote = awss3
+['remote "awss3"']
+    url = s3://summarization-research/
+    profile = personal
