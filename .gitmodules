@@ -1,0 +1,14 @@
+[submodule "Unparalleled-Text-Summarization-using-GAN"]
+	path = Unparalleled-Text-Summarization-using-GAN
+	url = git@github.com:alexs95/Unparalleled-Text-Summarization-using-GAN.git
+	branch = master
+
+[submodule "pointer-generator"]
+	path = pointer-generator
+	url = git@github.com:alexs95/pointer-generator.git
+	branch = master
+
+[submodule "factCC"]
+	path = factCC
+	url = git@github.com:alexs95/factCC.git
+	branch = master
