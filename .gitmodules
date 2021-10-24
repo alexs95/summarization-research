@@ -5,10 +5,17 @@
 
 [submodule "pointer-generator"]
 	path = pointer-generator
-	url = git@github.com:alexs95/pointer-generator.git
+	# url = git@github.com:alexs95/pointer-generator.git
+	url = https://github.com/alexs95/pointer-generator
 	branch = master
 
 [submodule "factCC"]
 	path = factCC
-	url = git@github.com:alexs95/factCC.git
+	# url = git@github.com:alexs95/factCC.git
+	url = https://github.com/alexs95/factCC.git
 	branch = master
+
+[submodule "text-summarization"]
+	path = text-summarization
+	url = https://github.com/alexs95/text-summarization.git
+    branch = master
