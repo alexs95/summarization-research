@@ -1,0 +1,4 @@
+outs:
+- md5: 85ac23a1926a831e8f46a6b8eaf57263
+  size: 158577824
+  path: cnn_stories.tgz
