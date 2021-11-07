@@ -14,3 +14,15 @@ tar xzf factCC/checkpoint/factcc-checkpoint.tar.gz -C factCC/checkpoint
 cd factCC
 sbatch modeling/scripts/factcc-ichec-score.sh
 ```
+
+# Todo
+* Create top-level requirements.txt.
+* Implement fast, trimmed down score function based on score.py.
+* Coreference resolution in loader.
+* Refactoring of current loader .
+* Modify pre-loading pointer-generator dataset so that stories are available.
+* Implement loader functions for loading pointer-generator output.
+* Implement OpenIE triplet precision score with coreference resolution using Spacy.
+* Run experiments with various configurations to create table.
+* Evaluate results in Athena.
+* Implement distributed torch.
