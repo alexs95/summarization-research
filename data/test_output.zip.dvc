@@ -1,0 +1,4 @@
+outs:
+- md5: b763fdfcfa1582242eae8511f9937f1d
+  size: 39443702
+  path: test_output.zip
