@@ -13,3 +13,6 @@
 [submodule "cnn-dailymail"]
 	path = cnn-dailymail
 	url = https://github.com/alexs95/cnn-dailymail.git
+[submodule "feqa"]
+	path = feqa
+	url = https://github.com/esdurmus/feqa.git
