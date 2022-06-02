@@ -7,7 +7,7 @@ git submodule update --init --recursive
 # Change this to be public
 conda create -n summarization3.6 python=3.6
 conda activate summarization3.6
-pip install -r factCC/requirements.txt
+pip install -r requirements.txt
 pip install 'dvc[s3]'
 dvc pull
 ```
@@ -27,6 +27,19 @@ cd pointer-generator
 sbatch modeling/pointer-generator-ichec.sh
 ```
 
+ICHEC: Rouge evaluate
+```bash
+unzip cnn-dailymail/finished_files.zip -d cnn-dailymail
+unzip pointer-generator/checkpoint/pretrained_model_tf1.2.1.zip -d pointer-generator/checkpoint
+cd pointer-generator
+sbatch modeling/pointer-generator-ichec.sh
+```
+
+Local: FactCC factual correctness data generation:
+```bash
+python modeling/score.py --mode preprocess --cnndm $PWD/../data/cnndm --summaries $PWD/../summarization-research/pointer-generator/checkpoint/pretrained_model_tf1.2.1/decode_test_400maxenc_4beam_35mindec_120maxdec_ckpt-238410/reference --evaluation /Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/factCC/evaluation/reference
+```
+
 ICHEC: FactCC factual correctness score:
 ```bash
 cd factCC
@@ -36,11 +49,7 @@ sbatch modeling/scripts/factcc-ichec-score.sh
 
 
 # Todo
-* Implement fast, trimmed down score function based on score.py.
-* Coreference resolution in loader.
+* Rouge score: need to copy and paste all summaries and references labelled as 000_decoded.txt
 * Refactoring of current loader.
-* Implement loader functions for loading pointer-generator output.
-* Implement OpenIE triplet precision score with coreference resolution using Spacy.
-* Run experiments with various configurations to create table.
-* Evaluate results in Athena.
-* Implement distributed torch.
+* Implement and run OpenIE triplet precision score with coreference resolution using Spacy.
+* Implement and run FEQA score https://github.com/esdurmus/feqa

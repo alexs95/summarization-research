@@ -1,18 +1,19 @@
 [submodule "pointer-generator"]
 	path = pointer-generator
-	# url = git@github.com:alexs95/pointer-generator.git
 	url = https://github.com/alexs95/pointer-generator
 	branch = master
 
 [submodule "factCC"]
 	path = factCC
-	# url = git@github.com:alexs95/factCC.git
 	url = https://github.com/alexs95/factCC.git
 	branch = master
 
 [submodule "cnn-dailymail"]
 	path = cnn-dailymail
 	url = https://github.com/alexs95/cnn-dailymail.git
+	branch = master
+
 [submodule "feqa"]
 	path = feqa
-	url = https://github.com/esdurmus/feqa.git
+	url = https://github.com/alexs95/feqa.git
+	branch = master
