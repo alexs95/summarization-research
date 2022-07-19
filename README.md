@@ -39,44 +39,6 @@ sbatch modeling/pointer-generator-ichec.sh
 ```
 
 
-## ROUGE Evaluation (ICHEC)
-
-```bash
-TODO
-```
-
-## FEQA Scoring
-
-### Data Preprocessing
-
-```bash
-TODO
-```
-
-### Score Calculation
-
-
-```bash
-TODO
-```
-
-
-## OpenIE Triplet Precision Scoring
-
-### Data Preprocessing
-
-```bash
-TODO
-```
-
-### Score Calculation
-
-
-```bash
-TODO
-```
-
-
 ## FactCC Scoring
 
 ### Data Preprocessing
@@ -95,7 +57,173 @@ tar xzf checkpoint/factcc-checkpoint.tar.gz -C checkpoint
 sbatch modeling/scripts/factcc-ichec-preprocess-submit.sh
 ```
 
-### Score Calculation
+NOTE: The input to this step is the output of a pointer-generator like model (pointer-generator or RLSeq2Seq)
+
+
+## RLSeq2Seq
+MLE Train
+```bash
+CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
+--mode=train \
+--data_path="$PWD/cnn-dailymail/finished_files/chunked/train_*" \
+--vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
+--log_root="$PWD/RLSeq2Seq/model" \
+--exp_name=intradecoder-temporalattention-withpretraining \
+--batch_size=80 \
+--max_iter=20000 \
+--use_temporal_attention=True \
+--intradecoder=True \
+--rl_training=False \
+--gpu_num=0
+```
+
+MLE Eval
+```bash
+CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
+--mode='eval' \
+--data_path="$PWD/cnn-dailymail/finished_files/chunked/val_*" \
+--vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
+--log_root="$PWD/RLSeq2Seq/model" \
+--exp_name=intradecoder-temporalattention-withpretraining \
+--batch_size=8 \
+--use_temporal_attention=True \
+--intradecoder=True \
+ -rl_training=False \
+--gpu_num=0
+```
+
+MLE Decode
+```bash
+CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
+--mode=decode \
+--data_path="$PWD/cnn-dailymail/finished_files/chunked/test_*" \
+--vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
+--log_root="$PWD/RLSeq2Seq/model" \
+--exp_name=intradecoder-temporalattention-withpretraining \
+--rl_training=False \
+--intradecoder=True \
+--use_temporal_attention=True \
+--single_pass=1 \
+--beam_size=4 \
+--decode_after=0 \
+--gpu_num=0
+```
+
+Prepare MLE Rouge Score:
+```bash
+python RLSeq2Seq/src/rouge_convert.py --path "$PWD/RLSeq2Seq/model/intradecoder-temporalattention-withpretraining/decode_val_train_400maxenc_4beam_35mindec_100maxdec_train-ckpt-0"
+```
+
+MLE Rouge Score:
+```bash
+CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
+--mode=rouge \
+--data_path="$PWD/cnn-dailymail/finished_files/chunked/test_*" \
+--vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
+--log_root="$PWD/RLSeq2Seq/model" \
+--exp_name=intradecoder-temporalattention-withpretraining \
+--rl_training=False \
+--intradecoder=True \
+--use_temporal_attention=True \
+--single_pass=1 \
+--beam_size=4 \
+--decode_after=0 \
+--gpu_num=0
+```
+
+Convert to RL:
+```bash
+srun -p GpuQ -N 1 -A ngcom023c -t 0:15:00 --pty bash
+module unload cuda
+module load cuda/11.2
+conda activate summarization3.6
+CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
+--mode=train \
+--data_path="$PWD/cnn-dailymail/finished_files/chunked/train_*" \
+--vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
+--log_root="$PWD/RLSeq2Seq/model" \
+--exp_name=intradecoder-temporalattention-withpretraining \
+--batch_size=80 \
+--max_iter=40000 \
+--intradecoder=True \
+--use_temporal_attention=True \
+--eta=2.5E-05 \
+--rl_training=True \
+--convert_to_reinforce_model=True \
+--factcc_gpu_num=1 \
+--gpu_num=0
+```
+
+RL Train:
+```bash
+CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
+--mode=train \
+--data_path="$PWD/cnn-dailymail/finished_files/chunked/train_*" \
+--vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
+--log_root="$PWD/RLSeq2Seq/model" \
+--exp_name=intradecoder-temporalattention-withpretraining \
+--batch_size=80 \
+--max_iter=40000 \
+--intradecoder=True \
+--use_temporal_attention=True \
+--eta=2.5E-05 \
+--rl_training=True \
+--factcc_gpu_num=1 \
+--gpu_num=0
+```
+
+RL Eval:
+```bash
+CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
+--mode='eval' \
+--data_path="$PWD/cnn-dailymail/finished_files/chunked/val_*" \
+--vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
+--log_root="$PWD/RLSeq2Seq/model" \
+--exp_name=intradecoder-temporalattention-withpretraining \
+--batch_size=8 \
+--use_temporal_attention=True \
+--intradecoder=True \
+--rl_training=True \
+--factcc_gpu_num=1 \
+--gpu_num=0
+```
+
+RL Decode:
+```bash
+CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
+--mode=decode \
+--data_path="$PWD/cnn-dailymail/finished_files/chunked/test_*" \
+--vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
+--log_root="$PWD/RLSeq2Seq/model" \
+--exp_name=intradecoder-temporalattention-withpretraining \
+--rl_training=True \
+--intradecoder=True \
+--use_temporal_attention=True \
+--single_pass=1 \
+--beam_size=4 \
+--decode_after=0 \
+--factcc_gpu_num=1 \
+--gpu_num=0
+```
+
+RL Rouge Score:
+```bash
+PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
+--mode=rouge \
+--data_path="$PWD/cnn-dailymail/finished_files/chunked/test_*" \
+--vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
+--log_root="$PWD/RLSeq2Seq/model" \
+--exp_name=intradecoder-temporalattention-withpretraining \
+--rl_training=True \
+--intradecoder=True \
+--use_temporal_attention=True \
+--single_pass=1 \
+--beam_size=4 \
+--decode_after=0
+```
+
+
+### FactCC Evaluation
 
 * Runs score calculation on cross product of options (output of above).
 
@@ -142,69 +270,3 @@ cat slurm-880069.out| egrep '/ichec/home/users/ashapovalov/projects/summarizatio
 /ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/val_sentence_reference_unresolved/
 0.924659
 ```
-
-## RLSeq2Seq
-MLE Train
-```
---mode=train --data_path=/Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/data/finished_files/chunked/train_* --vocab_path=/Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/data/finished_files/vocab --log_root=/Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/RLSeq2Seq/model --exp_name=intradecoder-temporalattention-withpretraining --batch_size=80 --max_iter=20000 --use_temporal_attention=True --intradecoder=True --rl_training=False
-```
-
-Convert:
-```
---mode=train --data_path=/Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/data/finished_files/chunked/train_* --vocab_path=/Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/data/finished_files/vocab --log_root=/Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/RLSeq2Seq/model --exp_name=intradecoder-temporalattention-withpretraining --batch_size=80 --max_iter=40000 --intradecoder=True --use_temporal_attention=True --eta=2.5E-05 --rl_training=True --convert_to_reinforce_model=True
-```
-
-RL Train:
-```
---mode=train --data_path=/Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/data/finished_files/chunked/train_* --vocab_path=/Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/data/finished_files/vocab --log_root=/Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/RLSeq2Seq/model --exp_name=intradecoder-temporalattention-withpretraining --batch_size=80 --max_iter=40000 --intradecoder=True --use_temporal_attention=True --eta=2.5E-05 --rl_training=True
-PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
---mode=train \
---data_path="$PWD/data/finished_files/chunked/train_*" \
---vocab_path="$PWD/data/finished_files/vocab" \
---log_root="$PWD/RLSeq2Seq/model" \
---exp_name=intradecoder-temporalattention-withpretraining \
---batch_size='80' \
---max_iter=40000 \
---intradecoder=True \
---use_temporal_attention=True \
---eta=2.5E-05 \
---rl_training=True
-```
-
-Decode:
-```
-PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
---mode=decode
---data_path="/Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/data/finished_files/chunked/train_*"
---vocab_path="/Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/data/finished_files/vocab"
---log_root="/Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/RLSeq2Seq/model"
---exp_name=intradecoder-temporalattention-withpretraining
---rl_training=True
---intradecoder=True
---use_temporal_attention=True
---single_pass=1
---beam_size=4
---decode_after=0
-```
-
-
---mode=train
---data_path=/Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/cnn-dailymail/finished_files/chunked/train_*
---vocab_path=/Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/cnn-dailymail/finished_files/vocab
---log_root=/Users/Alexey.Shapovalov@ig.com/Projects/nuig/summarization-research/RLSeq2Seq/model
---exp_name=intradecoder-temporalattention-withpretraining
---batch_size=80
---max_iter=40000
---intradecoder=True
---use_temporal_attention=True
---eta=2.5E-05
---rl_training=True
-
-
-# TODO
-
-* Create table and fill in values for FactCC.
-* Rouge score: need to copy and paste all summaries and references labelled as 000_decoded.txt
-* Refactoring of current loader.
-* Implement and run OpenIE triplet precision score with coreference resolution using Spacy.
-* Implement and run FEQA score https://github.com/esdurmus/feqa
