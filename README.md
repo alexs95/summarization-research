@@ -1,4 +1,9 @@
-# Reinforcing Factual Correctness into Deep Summarizers
+# Deep abstractive summarization with reinforced factual correctness
+
+## Project Structure
+
+The project is made up of four git submodules pointing to forks of other papers used in this research.
+DVC is used to manage data and persist experiments.
 
 ## Setup
 
@@ -13,8 +18,6 @@ conda activate summarization3.7
 pip install -r requirements.txt
 dvc pull
 ```
-
-## Setup (ICHEC)
 
 ### ICHEC
 
