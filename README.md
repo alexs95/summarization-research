@@ -2,34 +2,60 @@
 
 ## Setup
 
+### Local
+
 ```bash
 git submodule update --init --recursive
 # Setup ~/.aws/credentials personal profile
 # Change this to be public
-conda create -n summarization3.6 python=3.6
-conda activate summarization3.6
+conda create -n summarization3.7 python=3.7
+conda activate summarization3.7
 pip install -r requirements.txt
 dvc pull
 ```
 
-## Processes
+## Setup (ICHEC)
 
-cnn-dailymail -> pointer-generator -> data/cnndm -> factCC -> openIE -> FEQA
+### ICHEC
+
+```bash
+cd /ichec/work/ngcom023c
+git clone https://github.com/alexs95/summarization-research.git
+cd summarization-research
+git submodule update --init --recursive
+# Setup ~/.aws/credentials personal profile to access S3
+conda create -n summarization3.7 python=3.7
+conda activate summarization3.7
+pip install -r requirements-gpu.txt
+dvc pull
+```
 
 
-## Summary Generation
+## Prepare CNN/DM for pointer-generator
 
-* pointer-generator must be re-run to match reference stories with their corresponding decoded stories.
-* In the pre-trained outputs it is impossible to do this above, the code needed to be modified to inject identifiers into the files.
+In order to be able to evaluate factual correctness scores it is required that the corresponding input article of each
+decoded summary is known. In current implementations it is not possible to easily do so. As such the cnn-dailymail
+project was modified to save the articles alongside the decoded stories.
 
-### Prepare CNN/DM for pointer-generator (local)
+### Modify pre-processing steps to output the article
+
+You can do this locally, on a Macbook Pro this takes ~2 hours.
 
 ```bash
 cd cnn-dailymail
 python make_datafiles.py ../data/cnndm/cnn/stories ../data/cnndm/dailymail/stories
 ```
 
-### Run pointer-generator (ICHEC)
+
+## FactCC Scoring
+
+To evaluate the FactCC scorer, a publicly available pre-trained pointer-generator network was used
+to generate article, summary pairs to evaluate. A publicly available pre-trained FactCC network was used to
+generate correctness probabilities from which the scores were calculated.
+
+### Run pre-trained pointer-generator
+
+This takes 7 hours running on ICHEC with a GPU.
 
 ```bash
 unzip cnn-dailymail/finished_files.zip -d cnn-dailymail
@@ -39,17 +65,18 @@ sbatch modeling/pointer-generator-ichec.sh
 ```
 
 
-## FactCC Scoring
+### Pre-trained pointer-generator FactCC score evaluation
 
-### Data Preprocessing
+Values for Table X.X are based on this.
+Several data generation and preprocessing options are available for experimentation purposes.
+An experiment is run based on the pre-trained pointer-generator for the cross product of these options (16 datasets).
+This takes 8 hours running on ICHEC with a GPU.
 
-* The data needs to be preprocessed into the correct input format to run the FactCC scorer.
-* Several preprocessing options are available:
-    1. sentence vs paragraph 
-    2. co-reference resolution
-    3. test set vs validation set
-    4. reference stories vs decoded stories
-* Below command generates data for the cross product of these options (16 datasets).
+1. sentence vs paragraph 
+2. co-reference resolution
+3. test set vs validation set
+4. reference stories vs decoded stories
+
 
 ```bash
 cd factCC
@@ -57,11 +84,17 @@ tar xzf checkpoint/factcc-checkpoint.tar.gz -C checkpoint
 sbatch modeling/scripts/factcc-ichec-preprocess-submit.sh
 ```
 
-NOTE: The input to this step is the output of a pointer-generator like model (pointer-generator or RLSeq2Seq)
 
+## Policy Gradient w. FactCC scoring
 
-## RLSeq2Seq
-MLE Train
+Training the model is a two-step process:
+
+1. Train the pointer-generator with MLE loss as per normal.
+2. Further train the pointer-generator via policy gradient with the reward being a combination of ROUGE and FactCC scores.
+
+### Step 1: Train the pointer-generator
+
+#### Train the pointer-generator with MLE loss
 ```bash
 CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode=train \
@@ -77,7 +110,7 @@ CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/ru
 --gpu_num=0
 ```
 
-MLE Eval
+#### Evaluate the trained pointer-generator
 ```bash
 CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode='eval' \
@@ -92,7 +125,7 @@ CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/ru
 --gpu_num=0
 ```
 
-MLE Decode
+#### Decode the test set
 ```bash
 CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode=decode \
@@ -109,13 +142,9 @@ CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/ru
 --gpu_num=0
 ```
 
-Prepare MLE Rouge Score:
+#### Run ROUGE evaluation on the decoded test set
 ```bash
 python RLSeq2Seq/src/rouge_convert.py --path "$PWD/RLSeq2Seq/model/intradecoder-temporalattention-withpretraining/decode_val_train_400maxenc_4beam_35mindec_100maxdec_train-ckpt-0"
-```
-
-MLE Rouge Score:
-```bash
 CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode=rouge \
 --data_path="$PWD/cnn-dailymail/finished_files/chunked/test_*" \
@@ -131,12 +160,20 @@ CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/ru
 --gpu_num=0
 ```
 
-Convert to RL:
+### Run FactCC score evaluation
+```bash
+
+```
+
+
+### Step 2: Train the pointer-generator via policy gradient
+
+#### Convert the pointer-generator into a policy gradient model
 ```bash
 srun -p GpuQ -N 1 -A ngcom023c -t 0:15:00 --pty bash
 module unload cuda
 module load cuda/11.2
-conda activate summarization3.6
+conda activate summarization3.7
 CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode=train \
 --data_path="$PWD/cnn-dailymail/finished_files/chunked/train_*" \
@@ -154,7 +191,7 @@ CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/ru
 --gpu_num=0
 ```
 
-RL Train:
+#### Train the model via policy gradient
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode=train \
@@ -172,7 +209,7 @@ CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/
 --gpu_num=0
 ```
 
-RL Eval:
+#### Evaluate the policy gradient model
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode='eval' \
@@ -188,7 +225,7 @@ CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/
 --gpu_num=0
 ```
 
-RL Decode:
+#### Decode the test set
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode=decode \
@@ -206,7 +243,7 @@ CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/
 --gpu_num=0
 ```
 
-RL Rouge Score:
+#### Run ROUGE evaluation on the decoded test set
 ```bash
 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode=rouge \
@@ -222,51 +259,7 @@ PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --decode_after=0
 ```
 
-
-### FactCC Evaluation
-
-* Runs score calculation on cross product of options (output of above).
-
+### Run FactCC score evaluation
 ```bash
-cd factCC
-tar xzf checkpoint/factcc-checkpoint.tar.gz -C checkpoint
-sbatch modeling/scripts/factcc-ichec-score-submit.sh
-```
 
-Create table with:
-```bash
-cat slurm-880069.out| egrep '/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/|0\.'
->>>
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/test_paragraph_decoded_resolved/
-0.49508145
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/test_paragraph_decoded_unresolved/
-0.49885604
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/test_paragraph_reference_resolved/
-0.45128733
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/test_paragraph_reference_unresolved/
-0.45417878
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/test_sentence_decoded_resolved/
-0.96813047
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/test_sentence_decoded_unresolved/
-0.97131264
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/test_sentence_reference_resolved/
-0.9266849
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/test_sentence_reference_unresolved/
-0.9245219
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/val_paragraph_decoded_resolved/
-0.5040538
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/val_paragraph_decoded_unresolved/
-0.5057918
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/val_paragraph_reference_resolved/
-0.45776337
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/val_paragraph_reference_unresolved/
-0.46124858
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/val_sentence_decoded_resolved/
-0.9680663
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/val_sentence_decoded_unresolved/
-0.97193044
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/val_sentence_reference_resolved/
-0.9255798
-/ichec/home/users/ashapovalov/projects/summarization-research/factCC/evaluation/val_sentence_reference_unresolved/
-0.924659
 ```
