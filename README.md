@@ -38,7 +38,7 @@ dvc pull
 
 In order to be able to evaluate factual correctness scores it is required that the corresponding input article of each
 decoded summary is known. In current implementations it is not possible to easily do so. As such the cnn-dailymail
-project was modified to save the articles alongside the decoded stories.
+project was modified to save the articles alongside the decoded stories with a unique identifier.
 
 ### Modify pre-processing steps to output the article
 
@@ -53,7 +53,7 @@ python make_datafiles.py ../data/cnndm/cnn/stories ../data/cnndm/dailymail/stori
 ## FactCC Scoring
 
 To evaluate the FactCC scorer, a publicly available pre-trained pointer-generator network was used
-to generate article, summary pairs to evaluate. A publicly available pre-trained FactCC network was used to
+to generate article, summary pairs to evaluate. Similarly, a publicly available pre-trained FactCC network was used to
 generate correctness probabilities from which the scores were calculated.
 
 ### Run pre-trained pointer-generator
@@ -93,20 +93,25 @@ sbatch modeling/scripts/factcc-ichec-preprocess-submit.sh
 Training the model is a two-step process:
 
 1. Train the pointer-generator with MLE loss as per normal.
-2. Further train the pointer-generator via policy gradient with the reward being a combination of ROUGE and FactCC scores.
+2. Further train the pointer-generator via policy gradient, the reward being a combination of ROUGE and FactCC scoring.
 
 ### Step 1: Train the pointer-generator
+* 20 hours per 50000 iterations.
+* Need to train for approximately 200K iterations.
 
 #### Train the pointer-generator with MLE loss
 ```bash
 CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode=train \
+--enc_hidden_dim=320 \
+--dec_hidden_dim=320 \
+--batch_size=50 \
+--lr=0.001 \
 --data_path="$PWD/cnn-dailymail/finished_files/chunked/train_*" \
 --vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
 --log_root="$PWD/RLSeq2Seq/model" \
---exp_name=intradecoder-temporalattention-withpretraining \
---batch_size=80 \
---max_iter=20000 \
+--exp_name=intradecoder-temporalattention-mleloss \
+--max_iter=25000 \
 --use_temporal_attention=True \
 --intradecoder=True \
 --rl_training=False \
@@ -117,14 +122,17 @@ CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/ru
 ```bash
 CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode='eval' \
+--enc_hidden_dim=320 \
+--dec_hidden_dim=320 \
+--batch_size=50 \
+--lr=0.001 \
 --data_path="$PWD/cnn-dailymail/finished_files/chunked/val_*" \
 --vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
 --log_root="$PWD/RLSeq2Seq/model" \
---exp_name=intradecoder-temporalattention-withpretraining \
---batch_size=8 \
+--exp_name=intradecoder-temporalattention-mleloss \
 --use_temporal_attention=True \
 --intradecoder=True \
- -rl_training=False \
+--rl_training=False \
 --gpu_num=0
 ```
 
@@ -132,40 +140,63 @@ CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/ru
 ```bash
 CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode=decode \
+--enc_hidden_dim=320 \
+--dec_hidden_dim=320 \
+--batch_size=50 \
+--lr=0.001 \
 --data_path="$PWD/cnn-dailymail/finished_files/chunked/test_*" \
 --vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
 --log_root="$PWD/RLSeq2Seq/model" \
---exp_name=intradecoder-temporalattention-withpretraining \
+--exp_name=intradecoder-temporalattention-mleloss \
 --rl_training=False \
 --intradecoder=True \
 --use_temporal_attention=True \
 --single_pass=1 \
---beam_size=4 \
+--beam_size=5 \
 --decode_after=0 \
 --gpu_num=0
 ```
 
 #### Run ROUGE evaluation on the decoded test set
 ```bash
-python RLSeq2Seq/src/rouge_convert.py --path "$PWD/RLSeq2Seq/model/intradecoder-temporalattention-withpretraining/decode_val_train_400maxenc_4beam_35mindec_100maxdec_train-ckpt-0"
-CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
+# Install pyrouge into home directory
+# See: https://stackoverflow.com/questions/45894212/installing-pyrouge-gets-error-in-ubuntu
+conda install -c perl-xml-libxml
+git clone https://github.com/bheinzerling/pyrouge
+cd pyrouge
+pip install -e .
+git clone https://github.com/andersjo/pyrouge.git rouge
+pyrouge_set_rouge_path "$PWD/rouge/tools/ROUGE-1.5.5"
+python -m pyrouge.test
+
+# Copy files into expected format expected by pyrouge
+python RLSeq2Seq/src/rouge_convert.py --path "$PWD/RLSeq2Seq/model/intradecoder-temporalattention-mleloss/decode_val_train_400maxenc_5beam_35mindec_100maxdec_train-ckpt-0"
+
+PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode=rouge \
+--enc_hidden_dim=320 \
+--dec_hidden_dim=320 \
+--batch_size=50 \
+--lr=0.001 \
 --data_path="$PWD/cnn-dailymail/finished_files/chunked/test_*" \
 --vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
 --log_root="$PWD/RLSeq2Seq/model" \
---exp_name=intradecoder-temporalattention-withpretraining \
+--exp_name=intradecoder-temporalattention-mleloss \
 --rl_training=False \
 --intradecoder=True \
 --use_temporal_attention=True \
 --single_pass=1 \
---beam_size=4 \
---decode_after=0 \
---gpu_num=0
+--beam_size=5 \
+--decode_after=0
 ```
 
-### Run FactCC score evaluation
+#### Run FactCC score evaluation
 ```bash
+# Preprocess
+PYTHONPATH="${PYTHONPATH}:factCC" python3 factCC/modeling/score.py --mode preprocess --cnndm $PWD/data/cnndm --summaries $PWD/RLSeq2Seq/model/intradecoder-temporalattention-mleloss/decode_val_train_400maxenc_5beam_35mindec_100maxdec_train-ckpt-0/decoded --evaluation $PWD/evaluation/mleloss
 
+# Run Evaluation
+PYTHONPATH="${PYTHONPATH}:factCC" python3 factCC/modeling/score.py --mode evaluate --evaluation $PWD/evaluation/mleloss
 ```
 
 
@@ -173,96 +204,125 @@ CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/ru
 
 #### Convert the pointer-generator into a policy gradient model
 ```bash
+# Copy the model from the previous stage
+cp -R $PWD/RLSeq2Seq/model/intradecoder-temporalattention-mleloss $PWD/RLSeq2Seq/model/intradecoder-temporalattention-rlloss 
+
 srun -p GpuQ -N 1 -A ngcom023c -t 0:15:00 --pty bash
 module unload cuda
 module load cuda/11.2
 conda activate summarization3.7
-CUDA_VISIBLE_DEVICES=1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
+CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode=train \
+--enc_hidden_dim=320 \
+--dec_hidden_dim=320 \
+--batch_size=50 \
+--lr=0.0001 \
 --data_path="$PWD/cnn-dailymail/finished_files/chunked/train_*" \
 --vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
 --log_root="$PWD/RLSeq2Seq/model" \
---exp_name=intradecoder-temporalattention-withpretraining \
---batch_size=80 \
+--exp_name=intradecoder-temporalattention-rlloss \
 --max_iter=40000 \
 --intradecoder=True \
 --use_temporal_attention=True \
---eta=2.5E-05 \
+--eta=0.0016 \
 --rl_training=True \
 --convert_to_reinforce_model=True \
---factcc_gpu_num=1 \
---gpu_num=0
+--factcc_gpu_num=0 \
+--gpu_num=1
 ```
 
 #### Train the model via policy gradient
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode=train \
+--enc_hidden_dim=320 \
+--dec_hidden_dim=320 \
+--batch_size=50 \
+--lr=0.0001 \
 --data_path="$PWD/cnn-dailymail/finished_files/chunked/train_*" \
 --vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
 --log_root="$PWD/RLSeq2Seq/model" \
---exp_name=intradecoder-temporalattention-withpretraining \
---batch_size=80 \
+--exp_name=intradecoder-temporalattention-rlloss \
 --max_iter=40000 \
 --intradecoder=True \
 --use_temporal_attention=True \
---eta=2.5E-05 \
+--eta=0.0016 \
 --rl_training=True \
---factcc_gpu_num=1 \
---gpu_num=0
+--factcc_gpu_num=0 \
+--gpu_num=1
 ```
 
 #### Evaluate the policy gradient model
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode='eval' \
+--enc_hidden_dim=320 \
+--dec_hidden_dim=320 \
+--batch_size=50 \
+--lr=0.0001 \
 --data_path="$PWD/cnn-dailymail/finished_files/chunked/val_*" \
 --vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
 --log_root="$PWD/RLSeq2Seq/model" \
---exp_name=intradecoder-temporalattention-withpretraining \
---batch_size=8 \
+--exp_name=intradecoder-temporalattention-rlloss \
 --use_temporal_attention=True \
+--eta=0.0016 \
 --intradecoder=True \
 --rl_training=True \
---factcc_gpu_num=1 \
---gpu_num=0
+--factcc_gpu_num=0 \
+--gpu_num=1
 ```
 
 #### Decode the test set
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode=decode \
+--enc_hidden_dim=320 \
+--dec_hidden_dim=320 \
+--batch_size=50 \
+--lr=0.0001 \
 --data_path="$PWD/cnn-dailymail/finished_files/chunked/test_*" \
 --vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
 --log_root="$PWD/RLSeq2Seq/model" \
---exp_name=intradecoder-temporalattention-withpretraining \
+--exp_name=intradecoder-temporalattention-rlloss \
 --rl_training=True \
 --intradecoder=True \
 --use_temporal_attention=True \
+--eta=0.0016 \
 --single_pass=1 \
---beam_size=4 \
+--beam_size=5 \
 --decode_after=0 \
---factcc_gpu_num=1 \
---gpu_num=0
+--factcc_gpu_num=0 \
+--gpu_num=1
 ```
 
 #### Run ROUGE evaluation on the decoded test set
 ```bash
+# Copy files into expected format expected by pyrouge
+python RLSeq2Seq/src/rouge_convert.py --path "$PWD/RLSeq2Seq/model/intradecoder-temporalattention-rlloss/decode_val_train_400maxenc_5beam_35mindec_100maxdec_train-ckpt-0"
+
 PYTHONPATH="${PYTHONPATH}:factCC" python RLSeq2Seq/src/run_summarization.py \
 --mode=rouge \
+--enc_hidden_dim=320 \
+--dec_hidden_dim=320 \
+--batch_size=50 \
+--lr=0.0001 \
 --data_path="$PWD/cnn-dailymail/finished_files/chunked/test_*" \
 --vocab_path="$PWD/cnn-dailymail/finished_files/vocab" \
 --log_root="$PWD/RLSeq2Seq/model" \
---exp_name=intradecoder-temporalattention-withpretraining \
+--exp_name=intradecoder-temporalattention-rlloss \
 --rl_training=True \
 --intradecoder=True \
 --use_temporal_attention=True \
 --single_pass=1 \
---beam_size=4 \
+--beam_size=5 \
 --decode_after=0
 ```
 
-### Run FactCC score evaluation
+#### Run FactCC score evaluation
 ```bash
+# Preprocess
+PYTHONPATH="${PYTHONPATH}:factCC" python3 factCC/modeling/score.py --mode preprocess --cnndm $PWD/data/cnndm --summaries $PWD/RLSeq2Seq/model/intradecoder-temporalattention-rlloss/decode_val_train_400maxenc_5beam_35mindec_100maxdec_train-ckpt-0/decoded --evaluation $PWD/evaluation/rlloss
 
+# Run Evaluation
+PYTHONPATH="${PYTHONPATH}:factCC" python3 factCC/modeling/score.py --mode evaluate --evaluation $PWD/evaluation/rlloss
 ```
